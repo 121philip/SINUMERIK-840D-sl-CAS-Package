@@ -1,2 +1,2 @@
-# SINUMERIK_840D_sl_CAS_Package
+# SINUMERIK 840D sl CAS Package
 Sources of our master thesis
