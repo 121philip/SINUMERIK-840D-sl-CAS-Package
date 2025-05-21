@@ -16,10 +16,6 @@ RESET_NODE = "ns=2;s=/Plc/DB21.DBX7.7"
 OPC_USER = "OpcUaClient"
 OPC_PASSWORD = "SUNRISE"
 
-# Add global flag after OPC configuration
-d_pressed = False
-keyboard_listener = None
-
 # Define the screen resolution and button areas
 SCREEN_WIDTH, SCREEN_HEIGHT = 2560, 1600
 
@@ -44,6 +40,8 @@ RESET_BUTTON_AREA = {
     "y_max": 183  # Bottom boundary of the RESET button
 }
 
+# Global flag to control delayed start
+delay_next_start = False
 
 def send_opc_signal(node_id, value=True):
     """Send signal to OPC UA server"""
@@ -60,10 +58,13 @@ def send_opc_signal(node_id, value=True):
         print(f"OPC Error: {e}")
 
 
-def delayed_start():
-    """Handle delayed start with 2-second wait"""
-    print("Delayed start initiated...")
-    time.sleep(4)
+def delayed_start(delay):
+    """Handle start with optional delay"""
+    if delay > 0:
+        print(f"Delayed start initiated with {delay} seconds...")
+        time.sleep(delay)
+    else:
+        print("Delayed start initiated without delay...")
     send_opc_signal(START_NODE)
 
 
@@ -74,47 +75,33 @@ def is_within_button_area(x, y, button_area):
     )
 
 
-# Add keyboard listener for D button
-def on_press(key):
-    global d_pressed
-    try:
-        if key.char.lower() == 'd':
-            d_pressed = True
-            print("D pressed")
-    except AttributeError:
-        print("special key {0} pressed".format(key))
-        pass
-
-
-def on_release(key):
-    global d_pressed
-    try:
-        if key.char.lower() == 'd':
-            d_pressed = False
-            print("D released")
-    except AttributeError:
-        print("special key {0} released".format(key))
-        pass
-
-
 def on_click(x, y, button, pressed):
-    global d_pressed
+    global delay_next_start
     if pressed:
         if is_within_button_area(x, y, START_BUTTON_AREA):
-            if d_pressed:
-                print("Delayed START detected - triggering OPC start after 2s")
-                threading.Thread(target=delayed_start).start()
+            print("Simulation START detected")
+            if delay_next_start:
+                print("Triggering delayed OPC start")
+                threading.Thread(target=delayed_start, args=(4,)).start()
+                delay_next_start = False
             else:
-                print("Immediate START detected - triggering OPC start")
-                send_opc_signal(START_NODE)
-            # Reset the flag after use
-            d_pressed = False
+                print("Triggering immediate OPC start")
+                threading.Thread(target=delayed_start, args=(0,)).start()
         elif is_within_button_area(x, y, STOP_BUTTON_AREA):
             print("Simulation STOP detected - triggering OPC stop")
             send_opc_signal(STOP_NODE)
         elif is_within_button_area(x, y, RESET_BUTTON_AREA):
             print("Simulation RESET detected - triggering OPC reset")
             send_opc_signal(RESET_NODE)
+
+def on_key_press(key):
+    global delay_next_start
+    try:
+        if key.char == 'd':
+            delay_next_start = True
+            print("Delayed enabled for next start")
+    except AttributeError:
+        pass  # Ignore special keys
 
 
 def detect_collision_window():
@@ -144,16 +131,15 @@ if __name__ == "__main__":
     # OCR configuration
     pytesseract.pytesseract.tesseract_cmd = r"D:\Program Files\Tesseract-OCR\tesseract.exe"
 
-    # Start keyboard listener
-    keyboard_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    keyboard_listener.daemon = True
-    keyboard_listener.start()
-
     # Start collision detection in a separate thread
     collision_thread = threading.Thread(target=detect_collision_window, daemon=True)
     collision_thread.start()
 
+    # Start keyboard listener
+    keyboard_listener = keyboard.Listener(on_press=on_key_press)
+    keyboard_listener.start()
+
     # Start the mouse event listener
-    print("Monitoring for collision pop-up and button clicks...")
+    print("Monitoring for collision pop-up, button clicks, and key presses...")
     with mouse.Listener(on_click=on_click) as listener:
         listener.join()

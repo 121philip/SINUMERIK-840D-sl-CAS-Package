@@ -1,5 +1,6 @@
 from opcua import Client
 import time
+import keyboard
 
 # OPC UA Configuration
 OPC_URL = "opc.tcp://192.168.214.50:4840/BFCGateway"
@@ -64,6 +65,14 @@ opc = OPCClient()
 prev_prog_status = None
 prev_reset_counter = None
 scheduled_start_time = None  # Track delayed start
+delay_next_start = False
+
+def on_d_press(event):
+    global delay_next_start
+    delay_next_start = True
+    print("Delay enabled for next start")
+
+keyboard.on_press_key("d", on_d_press)
 
 while True:
     current_prog_status = opc.read_value(PROG_STATUS_NODE)
@@ -76,8 +85,14 @@ while True:
     # Handle Start/Stop based on progStatus changes
     if current_prog_status != prev_prog_status:
         if current_prog_status == 3:
-            # Schedule start after 2 seconds
-            scheduled_start_time = time.time()
+            if delay_next_start:
+                # Schedule start after 2 seconds
+                scheduled_start_time = time.time()
+                print("Scheduled start with 2-second delay")
+                delay_next_start = False
+            else:
+                scheduled_start_time = time.time() - 2  # Immediate start
+                print("Immediate start")
         elif current_prog_status == 2:
             opc.send_signal(STOP_NODE)
         prev_prog_status = current_prog_status
