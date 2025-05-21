@@ -4,7 +4,7 @@ import numpy as np
 import pytesseract
 from PIL import Image
 import time
-from pynput import mouse
+from pynput import mouse, keyboard
 from opcua import Client
 import threading
 
@@ -15,6 +15,10 @@ STOP_NODE = "ns=2;s=/Plc/DB21.DBX7.3"
 RESET_NODE = "ns=2;s=/Plc/DB21.DBX7.7"
 OPC_USER = "OpcUaClient"
 OPC_PASSWORD = "SUNRISE"
+
+# Add global flag after OPC configuration
+d_pressed = False
+keyboard_listener = None
 
 # Define the screen resolution and button areas
 SCREEN_WIDTH, SCREEN_HEIGHT = 2560, 1600
@@ -70,11 +74,41 @@ def is_within_button_area(x, y, button_area):
     )
 
 
+# Add keyboard listener for D button
+def on_press(key):
+    global d_pressed
+    try:
+        if key.char.lower() == 'd':
+            d_pressed = True
+            print("D pressed")
+    except AttributeError:
+        print("special key {0} pressed".format(key))
+        pass
+
+
+def on_release(key):
+    global d_pressed
+    try:
+        if key.char.lower() == 'd':
+            d_pressed = False
+            print("D released")
+    except AttributeError:
+        print("special key {0} released".format(key))
+        pass
+
+
 def on_click(x, y, button, pressed):
+    global d_pressed
     if pressed:
         if is_within_button_area(x, y, START_BUTTON_AREA):
-            print("Simulation START detected - triggering delayed OPC start")
-            threading.Thread(target=delayed_start).start()
+            if d_pressed:
+                print("Delayed START detected - triggering OPC start after 2s")
+                threading.Thread(target=delayed_start).start()
+            else:
+                print("Immediate START detected - triggering OPC start")
+                send_opc_signal(START_NODE)
+            # Reset the flag after use
+            d_pressed = False
         elif is_within_button_area(x, y, STOP_BUTTON_AREA):
             print("Simulation STOP detected - triggering OPC stop")
             send_opc_signal(STOP_NODE)
@@ -109,6 +143,11 @@ def detect_collision_window():
 if __name__ == "__main__":
     # OCR configuration
     pytesseract.pytesseract.tesseract_cmd = r"D:\Program Files\Tesseract-OCR\tesseract.exe"
+
+    # Start keyboard listener
+    keyboard_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    keyboard_listener.daemon = True
+    keyboard_listener.start()
 
     # Start collision detection in a separate thread
     collision_thread = threading.Thread(target=detect_collision_window, daemon=True)
